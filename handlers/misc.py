@@ -27,7 +27,8 @@ async def cmd_help(message: Message) -> None:
             "/setexception - Set an ad-hoc class-off day + broadcast\n"
             "/clearexception <i>DD Mon YYYY</i> - Remove an exception\n"
             "/listexceptions - View upcoming exceptions\n"
-            "/showsuggest - View pending suggestions from users"
+            "/showsuggest - View pending suggestions from users\n"
+            "/users - List every registered user"
         )
     await message.answer(
         "<b>Available commands:</b>\n\n"

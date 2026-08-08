@@ -83,15 +83,21 @@ def _single_select_kb(subjects: list[str], prefix: str, back_cb: str) -> InlineK
 @router.message(Command("start"))
 async def cmd_start(message: Message, state: FSMContext) -> None:
     chat_id = message.chat.id
+    user = message.from_user
+    identity_fields = {
+        "username": user.username if user else None,
+        "fullName": user.full_name if user else None,
+    }
     # Subscribe the user (preserve existing notification preference if returning)
     existing = storage.get_user(chat_id)
     if existing:
         storage.upsert_user(
             chat_id,
             notificationsEnabled=existing.get("notificationsEnabled", True),
+            **identity_fields,
         )
     else:
-        storage.upsert_user(chat_id, notificationsEnabled=True)
+        storage.upsert_user(chat_id, notificationsEnabled=True, **identity_fields)
 
     await state.clear()
     await _show_semester_keyboard(message, state)

@@ -4,6 +4,7 @@ Admin-only commands:
   /setexception      — set an ad-hoc class-off day + broadcast it (multi-step FSM)
   /clearexception    — remove a wrongly-set exception
   /listexceptions    — show upcoming exceptions (past ones are auto-pruned)
+  /users             — list every registered user (sem, subjects, notify status)
 
 Admin access is checked inline at the top of each handler (config.is_admin).
 The whole router is also gated by an outer middleware as a defence-in-depth.
@@ -223,3 +224,71 @@ async def cmd_listexceptions(message: Message) -> None:
         rec = excs[date_key]
         lines.append(f"\U0001F534 <b>{date_key}</b> — {rec.get('reason', '—')}")
     await message.answer("\n".join(lines))
+
+
+# ---------------------------------------------------------------------------
+# /users — list every registered user with their registration details
+# ---------------------------------------------------------------------------
+
+def _format_subjects(rec: dict) -> str:
+    track = rec.get("track")
+    subjects = rec.get("subjects") or {}
+    if not track or not subjects:
+        return "not registered yet"
+    if track == "PG":
+        # subjects is {pg_tag: subject}
+        pairs = ", ".join(f"{k}: {v}" for k, v in subjects.items())
+        return f"PG — {pairs}"
+    parts = []
+    if subjects.get("MJ"):
+        parts.append(f"MJ: {subjects['MJ']}")
+    if subjects.get("MN"):
+        parts.append(f"MN: {subjects['MN']}")
+    if subjects.get("MDC"):
+        parts.append(f"MDC: {', '.join(subjects['MDC'])}")
+    return "UG — " + (", ".join(parts) if parts else "no subjects set")
+
+
+def _format_user_line(chat_id: str, rec: dict) -> str:
+    full_name = rec.get("fullName") or "Unknown"
+    username = f" (@{rec['username']})" if rec.get("username") else ""
+    sem = rec.get("sem", "—")
+    notify = "\U0001F7E2 ON" if rec.get("notificationsEnabled") else "\u26AA OFF"
+    return (
+        f"\U0001F464 <b>{full_name}</b>{username} [<code>{chat_id}</code>]\n"
+        f"   Sem {sem} | {_format_subjects(rec)} | {notify}"
+    )
+
+
+@router.message(Command("users"))
+async def cmd_users(message: Message) -> None:
+    users = storage.load_users()
+    if not users:
+        await message.answer("\u2139\uFE0F No registered users yet.")
+        return
+
+    # Sort by semester (numeric where possible), then by name.
+    def _sort_key(item):
+        chat_id, rec = item
+        sem = rec.get("sem")
+        try:
+            sem_val = int(sem)
+        except (TypeError, ValueError):
+            sem_val = 99
+        return (sem_val, (rec.get("fullName") or "").lower())
+
+    ordered = sorted(users.items(), key=_sort_key)
+    total, on = storage.subscriber_count()
+
+    lines = [f"\U0001F465 <b>{total} registered user(s)</b> — {on} with notifications ON\n"]
+    for chat_id, rec in ordered:
+        lines.append(_format_user_line(chat_id, rec))
+
+    # Telegram caps messages at 4096 chars — send in chunks of ~25 users.
+    CHUNK = 25
+    header = lines[0]
+    body_lines = lines[1:]
+    for i in range(0, len(body_lines), CHUNK):
+        chunk_lines = body_lines[i : i + CHUNK]
+        prefix = header if i == 0 else f"\U0001F465 <b>(continued {i // CHUNK + 1})</b>"
+        await message.answer(prefix + "\n\n" + "\n\n".join(chunk_lines))
