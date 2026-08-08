@@ -20,6 +20,7 @@ import asyncio
 import logging
 from datetime import datetime, timezone
 
+import aiohttp
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
@@ -76,15 +77,54 @@ async def notice_scrape_loop(bot: Bot) -> None:
             status_mod.LAST_SCRAPE_COUNT = len(notices)
             new_notices = [n for n in notices if n["title"] not in seen]
             if new_notices:
-                for notice in new_notices:
-                    text = (
-                        "\U0001F514 <b>New Notice — Malda College</b>\n\n"
-                        f"{notice['title']}\n\n"
-                        f'\U0001F517 <a href="{notice["link"]}">View Details</a>'
-                    )
-                    await broadcast.broadcast_text(bot, text, disable_preview=False)
-                    seen.add(notice["title"])
-                storage.save_seen(seen)
+                # One shared session for downloading all the slide images/PDFs
+                # in this cycle, instead of opening a new connection per notice.
+                async with aiohttp.ClientSession() as dl_session:
+                    for notice in new_notices:
+                        caption = (
+                            "\U0001F514 <b>New Notice — Malda College</b>\n\n"
+                            f"{notice['title']}\n\n"
+                            f'\U0001F517 <a href="{notice["link"]}">Original link</a>'
+                        )
+                        file_info = await scraper.download_notice_file(
+                            notice["link"], session=dl_session
+                        )
+
+                        if file_info is not None:
+                            content, filename, mime = file_info
+                            try:
+                                if mime.startswith("image/"):
+                                    await broadcast.broadcast_photo(
+                                        bot, content, filename, caption
+                                    )
+                                else:
+                                    await broadcast.broadcast_document(
+                                        bot, content, filename, caption
+                                    )
+                                seen.add(notice["title"])
+                                storage.save_seen(seen)
+                                logger.info(
+                                    "Broadcast notice with downloaded file (%s): %s",
+                                    mime, notice["title"],
+                                )
+                                continue
+                            except Exception as exc:  # noqa: BLE001
+                                logger.error(
+                                    "Failed broadcasting downloaded file for %r, "
+                                    "falling back to text: %s", notice["title"], exc,
+                                )
+
+                        # Couldn't download the notice content (or sending it
+                        # failed) — fall back to the old title + link message
+                        # so subscribers still get notified.
+                        text = (
+                            "\U0001F514 <b>New Notice — Malda College</b>\n\n"
+                            f"{notice['title']}\n\n"
+                            f'\U0001F517 <a href="{notice["link"]}">View Details</a>'
+                        )
+                        await broadcast.broadcast_text(bot, text, disable_preview=False)
+                        seen.add(notice["title"])
+                        storage.save_seen(seen)
                 logger.info("Broadcast %d new notice(s).", len(new_notices))
             else:
                 logger.debug("No new notices this cycle.")

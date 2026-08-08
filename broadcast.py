@@ -16,29 +16,29 @@ Behaviour:
 from __future__ import annotations
 
 import asyncio
+from typing import Awaitable, Callable
 
 from aiogram import Bot
 from aiogram.exceptions import TelegramForbiddenError, TelegramRetryAfter
+from aiogram.types import BufferedInputFile
 
 import config
 import storage
 
 
-async def _send_one(bot: Bot, chat_id: int, text: str, parse_mode: str = "HTML",
-                    disable_preview: bool = True) -> bool:
+async def _send_one(
+    bot: Bot,
+    chat_id: int,
+    send_fn: Callable[[Bot, int], Awaitable[None]],
+) -> bool:
     """
-    Send to a single chat. Returns True on success, False on (logged) failure.
-    Handles:
+    Run `send_fn(bot, chat_id)` for a single chat. Returns True on success,
+    False on (logged) failure. Handles:
       - 403 Forbidden (user blocked the bot) -> auto-disable notifications
       - 429 RetryAfter -> sleep the requested delay, then retry once
     """
     try:
-        await bot.send_message(
-            chat_id=chat_id,
-            text=text,
-            parse_mode=parse_mode,
-            disable_web_page_preview=disable_preview,
-        )
+        await send_fn(bot, chat_id)
         return True
     except TelegramRetryAfter as exc:
         config.logger.warning(
@@ -46,10 +46,7 @@ async def _send_one(bot: Bot, chat_id: int, text: str, parse_mode: str = "HTML",
         )
         await asyncio.sleep(exc.retry_after + 1)
         try:
-            await bot.send_message(
-                chat_id=chat_id, text=text, parse_mode=parse_mode,
-                disable_web_page_preview=disable_preview,
-            )
+            await send_fn(bot, chat_id)
             return True
         except Exception as exc2:  # noqa: BLE001
             config.logger.error("Retry failed for %s: %s", chat_id, exc2)
@@ -65,23 +62,72 @@ async def _send_one(bot: Bot, chat_id: int, text: str, parse_mode: str = "HTML",
         return False
 
 
-async def broadcast_text(bot: Bot, text: str, parse_mode: str = "HTML",
-                         disable_preview: bool = True) -> dict:
-    """
-    Send `text` to every subscriber with notifications on.
-    Returns {"sent": int, "total": int}.
-    """
+async def _broadcast(bot: Bot, send_fn: Callable[[Bot, int], Awaitable[None]]) -> dict:
     targets = storage.subscribers_with_notifications()
     total = len(targets)
     sent = 0
     for chat_id in targets:
-        ok = await _send_one(bot, chat_id, text, parse_mode, disable_preview)
+        ok = await _send_one(bot, chat_id, send_fn)
         if ok:
             sent += 1
         if config.BROADCAST_DELAY_SEC > 0:
             await asyncio.sleep(config.BROADCAST_DELAY_SEC)
     config.logger.info("Broadcast: sent to %d/%d subscribers", sent, total)
     return {"sent": sent, "total": total}
+
+
+async def broadcast_text(bot: Bot, text: str, parse_mode: str = "HTML",
+                         disable_preview: bool = True) -> dict:
+    """
+    Send `text` to every subscriber with notifications on.
+    Returns {"sent": int, "total": int}.
+    """
+    async def send_fn(bot: Bot, chat_id: int) -> None:
+        await bot.send_message(
+            chat_id=chat_id,
+            text=text,
+            parse_mode=parse_mode,
+            disable_web_page_preview=disable_preview,
+        )
+
+    return await _broadcast(bot, send_fn)
+
+
+async def broadcast_photo(
+    bot: Bot, photo_bytes: bytes, filename: str, caption: str,
+    parse_mode: str = "HTML",
+) -> dict:
+    """
+    Send a photo (e.g. the downloaded notice slide as a PNG) with a caption
+    to every subscriber with notifications on. A fresh BufferedInputFile is
+    built per-recipient since aiogram file objects aren't reusable across
+    sends. Returns {"sent": int, "total": int}.
+    """
+    async def send_fn(bot: Bot, chat_id: int) -> None:
+        photo = BufferedInputFile(photo_bytes, filename=filename)
+        await bot.send_photo(
+            chat_id=chat_id, photo=photo, caption=caption, parse_mode=parse_mode,
+        )
+
+    return await _broadcast(bot, send_fn)
+
+
+async def broadcast_document(
+    bot: Bot, doc_bytes: bytes, filename: str, caption: str,
+    parse_mode: str = "HTML",
+) -> dict:
+    """
+    Send a document (e.g. the downloaded notice deck as a PDF) with a
+    caption to every subscriber with notifications on.
+    Returns {"sent": int, "total": int}.
+    """
+    async def send_fn(bot: Bot, chat_id: int) -> None:
+        doc = BufferedInputFile(doc_bytes, filename=filename)
+        await bot.send_document(
+            chat_id=chat_id, document=doc, caption=caption, parse_mode=parse_mode,
+        )
+
+    return await _broadcast(bot, send_fn)
 
 
 async def send_admin(bot: Bot, text: str, parse_mode: str = "HTML") -> None:
