@@ -119,7 +119,7 @@ async def on_exc_date(callback: CallbackQuery, state: FSMContext) -> None:
         await callback.answer()
         return  # state stays waiting_for_date; the message handler below catches the typed date
 
-    await state.update_data(exc_date=date_key)
+    await state.update_data(exc_date=date_key, start_str=date_key, end_str=date_key)
     await state.set_state(SetException.waiting_for_reason)
     await callback.message.edit_text(
         f"Date: <b>{date_key}</b>\n\nNow send the <b>reason</b> as free text "
@@ -131,15 +131,34 @@ async def on_exc_date(callback: CallbackQuery, state: FSMContext) -> None:
 @router.message(SetException.waiting_for_date)
 async def on_exc_date_typed(message: Message, state: FSMContext) -> None:
     text = (message.text or "").strip()
+    import re
+    parts = re.split(r'(?i)\s+to\s+', text)
+    if len(parts) > 2:
+        await message.answer("\u26A0\uFE0F Invalid format. Use <b>DD Mon YYYY</b> or <b>DD Mon YYYY to DD Mon YYYY</b>:")
+        return
+
     try:
-        d = datetime.strptime(text, "%d %b %Y")
-        date_key = d.strftime("%d %b %Y")
+        start_d = datetime.strptime(parts[0].strip(), "%d %b %Y")
+        if len(parts) == 2:
+            end_d = datetime.strptime(parts[1].strip(), "%d %b %Y")
+            if end_d < start_d:
+                await message.answer("\u26A0\uFE0F End date cannot be before start date. Try again:")
+                return
+            date_key = f"{start_d.strftime('%d %b %Y')} to {end_d.strftime('%d %b %Y')}"
+            start_str = start_d.strftime('%d %b %Y')
+            end_str = end_d.strftime('%d %b %Y')
+        else:
+            date_key = start_d.strftime("%d %b %Y")
+            start_str = date_key
+            end_str = date_key
     except ValueError:
         await message.answer(
-            "\u26A0\uFE0F Could not parse that. Use <b>DD Mon YYYY</b> (e.g. <code>11 Aug 2026</code>):"
+            "\u26A0\uFE0F Could not parse that. Use <b>DD Mon YYYY</b> (e.g. <code>11 Aug 2026</code>) "
+            "or a range like <code>10 Aug 2026 to 15 Aug 2026</code>:"
         )
         return
-    await state.update_data(exc_date=date_key)
+        
+    await state.update_data(exc_date=date_key, start_str=start_str, end_str=end_str)
     await state.set_state(SetException.waiting_for_reason)
     await message.answer(
         f"Date: <b>{date_key}</b>\n\nNow send the <b>reason</b> as free text "
@@ -155,18 +174,33 @@ async def on_exc_reason(message: Message, state: FSMContext) -> None:
         return
     data = await state.get_data()
     date_key = data.get("exc_date")
-    if not date_key:
+    start_str = data.get("start_str")
+    end_str = data.get("end_str")
+    
+    if not date_key or not start_str or not end_str:
         await state.clear()
         await message.answer("\u26A0\uFE0F Session expired. Run /setexception again.")
         return
 
-    storage.set_exception(date_key, reason, set_by=message.chat.id)
+    start_d = datetime.strptime(start_str, "%d %b %Y")
+    end_d = datetime.strptime(end_str, "%d %b %Y")
+    
+    current_d = start_d
+    while current_d <= end_d:
+        storage.set_exception(current_d.strftime("%d %b %Y"), reason, set_by=message.chat.id)
+        current_d += timedelta(days=1)
+        
     await state.clear()
 
     # Immediate broadcast to all subscribers with notifications ON
+    if start_str != end_str:
+        msg_date = f"from {start_str} to {end_str}"
+    else:
+        msg_date = f"on {start_str}"
+
     broadcast_text = (
         "\U0001F514 <b>Update from Malda College Bot</b>\n\n"
-        f"\U0001F534 <b>Classes are OFF on {date_key}</b>\n"
+        f"\U0001F534 <b>Classes are OFF {msg_date}</b>\n"
         f"Reason: {reason}"
     )
     result = await broadcast.broadcast_text(message.bot, broadcast_text)
@@ -186,19 +220,46 @@ async def on_exc_reason(message: Message, state: FSMContext) -> None:
 async def cmd_clearexception(message: Message, command: CommandObject) -> None:
     arg = (command.args or "").strip()
     if not arg:
-        await message.answer("Usage: <code>/clearexception DD Mon YYYY</code>")
+        await message.answer("Usage: <code>/clearexception DD Mon YYYY</code> or <code>/clearexception DD Mon YYYY to DD Mon YYYY</code>")
         return
+        
+    import re
+    parts = re.split(r'(?i)\s+to\s+', arg)
+    if len(parts) > 2:
+        await message.answer("\u26A0\uFE0F Invalid format. Use <b>DD Mon YYYY</b> or <b>DD Mon YYYY to DD Mon YYYY</b>.")
+        return
+        
     try:
-        d = datetime.strptime(arg, "%d %b %Y")
-        date_key = d.strftime("%d %b %Y")
+        start_d = datetime.strptime(parts[0].strip(), "%d %b %Y")
+        if len(parts) == 2:
+            end_d = datetime.strptime(parts[1].strip(), "%d %b %Y")
+            if end_d < start_d:
+                await message.answer("\u26A0\uFE0F End date cannot be before start date.")
+                return
+        else:
+            end_d = start_d
     except ValueError:
-        await message.answer("\u26A0\uFE0F Could not parse date. Use <b>DD Mon YYYY</b> (e.g. <code>11 Aug 2026</code>).")
+        await message.answer("\u26A0\uFE0F Could not parse date. Use <b>DD Mon YYYY</b> (e.g. <code>11 Aug 2026</code>) or a range.")
         return
-    removed = storage.clear_exception(date_key)
-    if removed:
-        await message.answer(f"\u2705 Cleared exception for <b>{date_key}</b>. Normal calendar/routine logic resumes.")
+        
+    removed_count = 0
+    current_d = start_d
+    while current_d <= end_d:
+        date_key = current_d.strftime("%d %b %Y")
+        if storage.clear_exception(date_key):
+            removed_count += 1
+        current_d += timedelta(days=1)
+        
+    if removed_count > 0:
+        if start_d != end_d:
+            await message.answer(f"\u2705 Cleared {removed_count} exception(s) from <b>{start_d.strftime('%d %b %Y')} to {end_d.strftime('%d %b %Y')}</b>. Normal logic resumes.")
+        else:
+            await message.answer(f"\u2705 Cleared exception for <b>{start_d.strftime('%d %b %Y')}</b>. Normal calendar/routine logic resumes.")
     else:
-        await message.answer(f"\u2139\uFE0F No exception was set for <b>{date_key}</b>.")
+        if start_d != end_d:
+            await message.answer(f"\u2139\uFE0F No exceptions were set between <b>{start_d.strftime('%d %b %Y')} and {end_d.strftime('%d %b %Y')}</b>.")
+        else:
+            await message.answer(f"\u2139\uFE0F No exception was set for <b>{start_d.strftime('%d %b %Y')}</b>.")
 
 
 # ---------------------------------------------------------------------------
@@ -219,10 +280,34 @@ async def cmd_listexceptions(message: Message) -> None:
         except ValueError:
             return datetime.max
 
+    sorted_keys = sorted(excs.keys(), key=_sort_key)
     lines = ["\U0001F4CB <b>Upcoming Exceptions</b>\n"]
-    for date_key in sorted(excs.keys(), key=_sort_key):
-        rec = excs[date_key]
-        lines.append(f"\U0001F534 <b>{date_key}</b> — {rec.get('reason', '—')}")
+    
+    grouped = []
+    for date_key in sorted_keys:
+        try:
+            d = datetime.strptime(date_key, "%d %b %Y")
+        except ValueError:
+            continue
+        reason = excs[date_key].get('reason', '—')
+        
+        if not grouped:
+            grouped.append({"start": d, "end": d, "reason": reason})
+        else:
+            last = grouped[-1]
+            if (d - last["end"]).days == 1 and last["reason"] == reason:
+                last["end"] = d
+            else:
+                grouped.append({"start": d, "end": d, "reason": reason})
+
+    for g in grouped:
+        start_str = g["start"].strftime("%d %b %Y")
+        end_str = g["end"].strftime("%d %b %Y")
+        if start_str == end_str:
+            lines.append(f"\U0001F534 <b>{start_str}</b> — {g['reason']}")
+        else:
+            lines.append(f"\U0001F534 <b>{start_str} – {end_str}</b> — {g['reason']}")
+            
     await message.answer("\n".join(lines))
 
 
