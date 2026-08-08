@@ -40,11 +40,13 @@ async def cmd_help(message: Message) -> None:
         "/notify - Toggle notifications ON/OFF\n"
         "/r - Today's routine\n"
         "/r today | /r now | /r next | /r <i>mon</i>\n"
-        "/status - Bot uptime + subscriber count\n"
         "/latest - Show the most recent notice from the college website\n"
+        "/notification - Show your last 5 received notifications\n"
         "/suggest <i>text</i> - Suggest a change or setting to the admin\n"
         "/ping - Check bot latency\n"
-        "/help - Show this message"
+        "/help - Show this message\n\n"
+        "<b>Admin Only:</b>\n"
+        "/status - Bot uptime + subscriber count"
         + admin_lines
     )
 
