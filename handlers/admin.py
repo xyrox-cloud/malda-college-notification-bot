@@ -752,3 +752,56 @@ async def cmd_listadmins(message: Message) -> None:
             lines.append(f"\U0001F539 [<code>{admin_id}</code>] (Not registered)")
             
     await message.answer("\n".join(lines))
+
+# ---------------------------------------------------------------------------
+# /broadcast - Send a custom message to all subscribers
+# ---------------------------------------------------------------------------
+
+class BroadcastCmd(StatesGroup):
+    waiting_for_confirmation = State()
+
+@router.message(Command("broadcast"))
+async def cmd_broadcast(message: Message, command: CommandObject, state: FSMContext) -> None:
+    arg = (command.args or "").strip()
+    if not arg:
+        await message.answer("Please provide a message to broadcast. Usage: <code>/broadcast <your message></code>")
+        return
+        
+    total, on = storage.subscriber_count()
+    
+    await state.update_data(broadcast_text=arg)
+    
+    buttons = [
+        [
+            InlineKeyboardButton(text="\u2705 Yes", callback_data="bc_confirm:yes"),
+            InlineKeyboardButton(text="\u274C No", callback_data="bc_confirm:no"),
+        ]
+    ]
+    
+    await state.set_state(BroadcastCmd.waiting_for_confirmation)
+    await message.answer(
+        f"\U0001F4E2 <b>Broadcast Preview:</b>\n\n{arg}\n\nSend to {on} subscribers?",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
+    )
+
+@router.callback_query(BroadcastCmd.waiting_for_confirmation, F.data.startswith("bc_confirm:"))
+async def on_bc_confirm(callback: CallbackQuery, state: FSMContext) -> None:
+    choice = callback.data.split(":", 1)[1]
+    if choice == "no":
+        await state.clear()
+        await callback.message.edit_text("\u274C Broadcast cancelled.")
+        return
+        
+    data = await state.get_data()
+    text = data.get("broadcast_text")
+    await state.clear()
+    
+    if not text:
+        await callback.message.edit_text("\u26A0\uFE0F Session expired.")
+        return
+        
+    await callback.message.edit_text("\u23F3 Broadcasting... Please wait.")
+    
+    result = await broadcast.broadcast_text(callback.bot, text)
+    
+    await callback.message.edit_text(f"\u2705 Broadcast sent to {result['sent']}/{result['total']} subscribers.")

@@ -31,6 +31,7 @@ async def cmd_help(message: Message) -> None:
             "/listexceptions - View upcoming exceptions\n"
             "/showsuggest - View pending suggestions from users\n"
             "/users - List every registered user\n"
+            "/broadcast <i>[message]</i> - Send a custom message to all subscribers\n"
             "/addadmin <i>[id/username]</i> - Add a new admin\n"
             "/removeadmin <i>[id/username]</i> - Remove an admin\n"
             "/listadmins - List all current admins"
