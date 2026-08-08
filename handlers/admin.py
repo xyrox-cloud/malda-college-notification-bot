@@ -57,15 +57,25 @@ router = Router(name="admin")
 # ---------------------------------------------------------------------------
 
 @router.message.middleware()
-async def _admin_gate_msg(handler, event: Message, data):  # type: ignore[no-untyped-def]
+async def _admin_gate_msg(handler, event: Message, data: dict):
     if not config.is_admin(event.chat.id):
         await event.answer("\U0001F6AB This command is admin-only.")
         return
+        
+    # Clear any pending FSM state if the admin sends a new command
+    text = event.text or ""
+    if text.startswith("/"):
+        state = data.get("state")
+        if state:
+            current_state = await state.get_state()
+            if current_state:
+                await state.clear()
+                
     return await handler(event, data)
 
 
 @router.callback_query.middleware()
-async def _admin_gate_cb(handler, event: CallbackQuery, data):  # type: ignore[no-untyped-def]
+async def _admin_gate_cb(handler, event: CallbackQuery, data: dict):
     chat_id = event.message.chat.id if event.message else 0
     if not config.is_admin(chat_id):
         await event.answer("Admin only.", show_alert=True)
@@ -132,6 +142,9 @@ async def cmd_setexception(message: Message, state: FSMContext, command: Command
             
             try:
                 start_d = datetime.strptime(normalize_date_str(start_str_raw), "%d %b %Y")
+                if start_d.date() < routine._now().date():
+                    await message.answer("\u26A0\uFE0F Start date cannot be in the past.")
+                    return
             except ValueError:
                 await message.answer(f"\u26A0\uFE0F Could not parse date: '{start_str_raw}' — please check the month name.")
                 return
@@ -194,6 +207,8 @@ async def cmd_setexception(message: Message, state: FSMContext, command: Command
         ],
         [InlineKeyboardButton(text="Type a date (DD Mon YYYY)", callback_data="excdate:custom")],
     ]
+    import time
+    await state.update_data(timestamp=time.time())
     await state.set_state(SetException.waiting_for_date)
     await message.answer(
         "\U0001F6A7 <b>Set Class-Off Exception</b>\n\n"
@@ -204,6 +219,13 @@ async def cmd_setexception(message: Message, state: FSMContext, command: Command
 
 @router.callback_query(SetException.waiting_for_date, F.data.startswith("excdate:"))
 async def on_exc_date(callback: CallbackQuery, state: FSMContext) -> None:
+    data = await state.get_data()
+    import time
+    if time.time() - data.get("timestamp", 0) > 180:
+        await state.clear()
+        await callback.message.edit_text("⏱️ Session expired due to inactivity. Please run the command again.")
+        return
+        
     choice = callback.data.split(":", 1)[1]
     if choice == "today":
         date_key = routine.date_key(routine._now())
@@ -216,7 +238,8 @@ async def on_exc_date(callback: CallbackQuery, state: FSMContext) -> None:
         await callback.answer()
         return  # state stays waiting_for_date; the message handler below catches the typed date
 
-    await state.update_data(exc_date=date_key, start_str=date_key, end_str=date_key)
+    import time
+    await state.update_data(exc_date=date_key, start_str=date_key, end_str=date_key, timestamp=time.time())
     await state.set_state(SetException.waiting_for_reason)
     await callback.message.edit_text(
         f"Date: <b>{date_key}</b>\n\nNow send the <b>reason</b> as free text "
@@ -227,6 +250,13 @@ async def on_exc_date(callback: CallbackQuery, state: FSMContext) -> None:
 
 @router.message(SetException.waiting_for_date)
 async def on_exc_date_typed(message: Message, state: FSMContext) -> None:
+    data = await state.get_data()
+    import time
+    if time.time() - data.get("timestamp", 0) > 180:
+        await state.clear()
+        await message.answer("⏱️ Session expired due to inactivity. Please run the command again.")
+        return
+        
     text = (message.text or "").strip()
     import re
     parts = re.split(r'(?i)\s+to\s+', text)
@@ -237,6 +267,10 @@ async def on_exc_date_typed(message: Message, state: FSMContext) -> None:
     try:
         start_str_raw = parts[0].strip()
         start_d = datetime.strptime(normalize_date_str(start_str_raw), "%d %b %Y")
+        if start_d.date() < routine._now().date():
+            await message.answer("\u26A0\uFE0F Start date cannot be in the past. Try again:")
+            return
+            
         if len(parts) == 2:
             end_str_raw = parts[1].strip()
             try:
@@ -258,7 +292,8 @@ async def on_exc_date_typed(message: Message, state: FSMContext) -> None:
         await message.answer(f"\u26A0\uFE0F Could not parse date: '{start_str_raw}' — please check the month name.")
         return
         
-    await state.update_data(exc_date=date_key, start_str=start_str, end_str=end_str)
+    import time
+    await state.update_data(exc_date=date_key, start_str=start_str, end_str=end_str, timestamp=time.time())
     await state.set_state(SetException.waiting_for_reason)
     await message.answer(
         f"Date: <b>{date_key}</b>\n\nNow send the <b>reason</b> as free text "
@@ -268,11 +303,18 @@ async def on_exc_date_typed(message: Message, state: FSMContext) -> None:
 
 @router.message(SetException.waiting_for_reason)
 async def on_exc_reason(message: Message, state: FSMContext) -> None:
+    data = await state.get_data()
+    import time
+    if time.time() - data.get("timestamp", 0) > 180:
+        await state.clear()
+        await message.answer("⏱️ Session expired due to inactivity. Please run the command again.")
+        return
+        
     reason = (message.text or "").strip()
     if not reason:
         await message.answer("Reason can't be empty. Try again:")
         return
-    data = await state.get_data()
+        
     date_key = data.get("exc_date")
     start_str = data.get("start_str")
     end_str = data.get("end_str")
