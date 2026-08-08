@@ -148,13 +148,14 @@ async def download_notice_file(
         config.logger.warning("Notice link isn't a recognisable Slides URL: %s", link)
         return None
     doc_id, page_id, is_pub = ref
+    doc_id = config.NOTICE_PRESENTATION_ID
 
     own_session = session is None
     if own_session:
         session = aiohttp.ClientSession()
 
     try:
-        base = f"https://docs.google.com/presentation/d/{'e/' if is_pub else ''}{doc_id}"
+        base = f"https://docs.google.com/presentation/d/{doc_id}"
 
         # 1) Try exporting just the one slide as a PNG image (best case —
         #    the user gets exactly the notice, nothing else).

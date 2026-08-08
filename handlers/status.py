@@ -37,6 +37,9 @@ def _format_uptime(delta_seconds: float) -> str:
 
 @router.message(Command("status"))
 async def cmd_status(message: Message) -> None:
+    if not config.is_admin(message.chat.id):
+        await message.answer("You are not authorized to use this command.")
+        return
     uptime = _format_uptime((datetime.now(timezone.utc) - BOT_START_TIME).total_seconds())
     total, on = storage.subscriber_count()
     last_check = (

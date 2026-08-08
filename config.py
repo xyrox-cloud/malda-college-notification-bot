@@ -133,3 +133,9 @@ def is_admin(chat_id: int | str) -> bool:
         return int(chat_id) in ADMIN_CHAT_IDS
     except (TypeError, ValueError):
         return False
+
+# ---------------------------------------------------------------------
+# Notice slide export (always use this real presentation ID — the
+# pub-token link format fails on Google's /export/png endpoint).
+# ---------------------------------------------------------------------
+NOTICE_PRESENTATION_ID = "10bQD2ed1NYAs7lE8Cg8_IfOqLRZr8CSxxR7221LunCE"
