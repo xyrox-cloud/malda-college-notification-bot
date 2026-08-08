@@ -278,3 +278,34 @@ def pending_suggestions() -> list[dict]:
     out = [r for r in suggestions.values() if r.get("status") == "pending"]
     out.sort(key=lambda r: int(r.get("id", 0)))
     return out
+
+
+# ---------------------------------------------------------------------------
+# Dynamic Admins store
+# ---------------------------------------------------------------------------
+
+def load_dynamic_admins() -> set[int]:
+    data = _read_json(config.ADMINS_FILE, [])
+    return set(int(x) for x in data if str(x).lstrip("-").isdigit())
+
+
+def save_dynamic_admins(admins: set[int]) -> None:
+    _write_json(config.ADMINS_FILE, list(admins))
+
+
+def add_dynamic_admin(chat_id: int) -> bool:
+    admins = load_dynamic_admins()
+    if chat_id in admins:
+        return False
+    admins.add(chat_id)
+    save_dynamic_admins(admins)
+    return True
+
+
+def remove_dynamic_admin(chat_id: int) -> bool:
+    admins = load_dynamic_admins()
+    if chat_id in admins:
+        admins.remove(chat_id)
+        save_dynamic_admins(admins)
+        return True
+    return False

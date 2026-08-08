@@ -377,3 +377,122 @@ async def cmd_users(message: Message) -> None:
         chunk_lines = body_lines[i : i + CHUNK]
         prefix = header if i == 0 else f"\U0001F465 <b>(continued {i // CHUNK + 1})</b>"
         await message.answer(prefix + "\n\n" + "\n\n".join(chunk_lines))
+
+
+# ---------------------------------------------------------------------------
+# Admin management: /addadmin, /removeadmin, /listadmins
+# ---------------------------------------------------------------------------
+
+@router.message(Command("addadmin"))
+async def cmd_addadmin(message: Message, command: CommandObject) -> None:
+    arg = (command.args or "").strip()
+    if not arg:
+        await message.answer("Usage: <code>/addadmin [user_id or @username]</code>")
+        return
+        
+    users = storage.load_users()
+    target_id = None
+    target_name = None
+    
+    if arg.startswith("@"):
+        uname = arg[1:].lower()
+        for cid, rec in users.items():
+            if rec.get("username", "").lower() == uname:
+                target_id = int(cid)
+                target_name = rec.get("fullName", uname)
+                break
+    elif arg.lstrip("-").isdigit():
+        target_id = int(arg)
+        rec = users.get(str(target_id))
+        target_name = rec.get("fullName", str(target_id)) if rec else str(target_id)
+        
+    if not target_id:
+        await message.answer(f"\u26A0\uFE0F User <b>{arg}</b> not found in database. Make sure they have started the bot.")
+        return
+        
+    if config.is_admin(target_id):
+        await message.answer("Already an admin.")
+        return
+        
+    if storage.add_dynamic_admin(target_id):
+        await message.answer(f"\u2705 User <b>{target_name}</b> (<code>{target_id}</code>) added as admin.")
+    else:
+        await message.answer("Already an admin.")
+
+
+@router.message(Command("removeadmin"))
+async def cmd_removeadmin(message: Message, command: CommandObject) -> None:
+    arg = (command.args or "").strip()
+    if not arg:
+        await message.answer("Usage: <code>/removeadmin [user_id or @username]</code>")
+        return
+        
+    users = storage.load_users()
+    target_id = None
+    target_name = None
+    
+    if arg.startswith("@"):
+        uname = arg[1:].lower()
+        for cid, rec in users.items():
+            if rec.get("username", "").lower() == uname:
+                target_id = int(cid)
+                target_name = rec.get("fullName", uname)
+                break
+    elif arg.lstrip("-").isdigit():
+        target_id = int(arg)
+        rec = users.get(str(target_id))
+        target_name = rec.get("fullName", str(target_id)) if rec else str(target_id)
+        
+    if not target_id:
+        if arg.lstrip("-").isdigit():
+            target_id = int(arg)
+            target_name = str(target_id)
+        else:
+            await message.answer(f"\u26A0\uFE0F User <b>{arg}</b> not found.")
+            return
+            
+    if not config.is_admin(target_id):
+        await message.answer("\u26A0\uFE0F That user is not an admin.")
+        return
+        
+    dynamic_admins = storage.load_dynamic_admins()
+    env_admins = config.ADMIN_CHAT_IDS
+    total_admins = len(dynamic_admins.union(env_admins))
+    
+    if total_admins <= 1:
+        await message.answer("\u26A0\uFE0F Cannot remove the last remaining admin.")
+        return
+        
+    if target_id in env_admins:
+        await message.answer("\u26A0\uFE0F Cannot remove this admin from the bot. They are hardcoded in the environment variable.")
+        return
+        
+    if storage.remove_dynamic_admin(target_id):
+        await message.answer(f"\u2705 User <b>{target_name}</b> (<code>{target_id}</code>) removed from admin list.")
+    else:
+        await message.answer("\u26A0\uFE0F That user is not an admin.")
+
+
+@router.message(Command("listadmins"))
+async def cmd_listadmins(message: Message) -> None:
+    dynamic_admins = storage.load_dynamic_admins()
+    env_admins = config.ADMIN_CHAT_IDS
+    all_admins = dynamic_admins.union(env_admins)
+    
+    if not all_admins:
+        await message.answer("No admins configured.")
+        return
+        
+    users = storage.load_users()
+    lines = ["\U0001F46E <b>Bot Admins</b>\n"]
+    
+    for admin_id in all_admins:
+        rec = users.get(str(admin_id))
+        if rec:
+            name = rec.get("fullName", "Unknown")
+            uname = f" (@{rec['username']})" if rec.get("username") else ""
+            lines.append(f"\U0001F539 <b>{name}</b>{uname} [<code>{admin_id}</code>]")
+        else:
+            lines.append(f"\U0001F539 [<code>{admin_id}</code>] (Not registered)")
+            
+    await message.answer("\n".join(lines))

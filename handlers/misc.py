@@ -30,7 +30,10 @@ async def cmd_help(message: Message) -> None:
             "/clearexception <i>DD Mon YYYY [to DD Mon YYYY]</i> - Remove an exception\n"
             "/listexceptions - View upcoming exceptions\n"
             "/showsuggest - View pending suggestions from users\n"
-            "/users - List every registered user"
+            "/users - List every registered user\n"
+            "/addadmin <i>[id/username]</i> - Add a new admin\n"
+            "/removeadmin <i>[id/username]</i> - Remove an admin\n"
+            "/listadmins - List all current admins"
         )
     await message.answer(
         "<b>Available commands:</b>\n\n"

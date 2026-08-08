@@ -22,6 +22,7 @@ USERS_FILE = DATA_DIR / os.environ.get("USERS_FILE", "users.json")
 EXCEPTIONS_FILE = DATA_DIR / "exceptions.json"
 SEEN_FILE = DATA_DIR / os.environ.get("SEEN_FILE", "seen_notices.json")
 SUGGESTIONS_FILE = DATA_DIR / "suggestions.json"
+ADMINS_FILE = DATA_DIR / os.environ.get("ADMINS_FILE", "admins.json")
 
 # On-disk fallback caches for the three Google Sheets sources
 CACHE_DIR = DATA_DIR / "cache"
@@ -127,10 +128,22 @@ def validate_startup() -> list[str]:
     return problems
 
 
+def get_dynamic_admins() -> set[int]:
+    try:
+        import json
+        if ADMINS_FILE.exists():
+            with open(ADMINS_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                return set(int(x) for x in data if str(x).lstrip("-").isdigit())
+    except Exception:
+        pass
+    return set()
+
 def is_admin(chat_id: int | str) -> bool:
     """True if the given chat id is in the admin set."""
     try:
-        return int(chat_id) in ADMIN_CHAT_IDS
+        cid = int(chat_id)
+        return cid in ADMIN_CHAT_IDS or cid in get_dynamic_admins()
     except (TypeError, ValueError):
         return False
 
