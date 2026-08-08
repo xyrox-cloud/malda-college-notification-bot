@@ -38,6 +38,7 @@ from handlers import (
     routine_router,
     start_router,
     status_router,
+    suggest_router,
 )
 
 logger = logging.getLogger("malda_bot.main")
@@ -172,6 +173,7 @@ def build_dispatcher() -> Dispatcher:
     dp.include_router(notify_router)
     dp.include_router(routine_router)
     dp.include_router(status_router)
+    dp.include_router(suggest_router)
     dp.include_router(misc_router)
     return dp
 

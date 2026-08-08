@@ -6,6 +6,7 @@ from .notify import router as notify_router
 from .routine_cmd import router as routine_router
 from .status import router as status_router
 from .admin import router as admin_router
+from .suggest import router as suggest_router
 from .misc import router as misc_router
 
 __all__ = [
@@ -15,5 +16,6 @@ __all__ = [
     "routine_router",
     "status_router",
     "admin_router",
+    "suggest_router",
     "misc_router",
 ]

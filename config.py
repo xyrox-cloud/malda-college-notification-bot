@@ -21,6 +21,7 @@ DATA_DIR.mkdir(parents=True, exist_ok=True)
 USERS_FILE = DATA_DIR / os.environ.get("USERS_FILE", "users.json")
 EXCEPTIONS_FILE = DATA_DIR / "exceptions.json"
 SEEN_FILE = DATA_DIR / os.environ.get("SEEN_FILE", "seen_notices.json")
+SUGGESTIONS_FILE = DATA_DIR / "suggestions.json"
 
 # On-disk fallback caches for the three Google Sheets sources
 CACHE_DIR = DATA_DIR / "cache"

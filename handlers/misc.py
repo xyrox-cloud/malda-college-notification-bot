@@ -26,7 +26,8 @@ async def cmd_help(message: Message) -> None:
             "/refreshdata - Re-fetch all sheet data now\n"
             "/setexception - Set an ad-hoc class-off day + broadcast\n"
             "/clearexception <i>DD Mon YYYY</i> - Remove an exception\n"
-            "/listexceptions - View upcoming exceptions"
+            "/listexceptions - View upcoming exceptions\n"
+            "/showsuggest - View pending suggestions from users"
         )
     await message.answer(
         "<b>Available commands:</b>\n\n"
@@ -39,6 +40,7 @@ async def cmd_help(message: Message) -> None:
         "/r today | /r now | /r next | /r <i>mon</i>\n"
         "/status - Bot uptime + subscriber count\n"
         "/latest - Show the most recent notice from the college website\n"
+        "/suggest <i>text</i> - Suggest a change or setting to the admin\n"
         "/ping - Check bot latency\n"
         "/help - Show this message"
         + admin_lines

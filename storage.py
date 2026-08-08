@@ -15,6 +15,10 @@ Three stores, each a separate JSON file under DATA_DIR:
     registration.
   - exceptions.json    -> { "<DD Mon YYYY>": { reason, setBy, setAt } }
   - seen_notices.json  -> { titles: [...], updated: "<iso>" }
+  - suggestions.json   -> { "<id>": {
+        id, chatId, username, fullName, text, status ("pending"|"reviewed"),
+        createdAt, reviewedAt
+    } }
 
 All writes go through a single FileLock per file so the async broadcast loop
 and the command handlers can safely mutate state concurrently.
@@ -210,3 +214,67 @@ def save_seen(seen: set[str]) -> None:
             "updated": datetime.now(timezone.utc).isoformat(),
         },
     )
+
+
+# ---------------------------------------------------------------------------
+# Suggestions store (/suggest, /showsuggest)
+# ---------------------------------------------------------------------------
+
+def load_suggestions() -> dict[str, dict]:
+    data = _read_json(config.SUGGESTIONS_FILE, {})
+    return data if isinstance(data, dict) else {}
+
+
+def save_suggestions(suggestions: dict[str, dict]) -> None:
+    _write_json(config.SUGGESTIONS_FILE, suggestions)
+
+
+def add_suggestion(chat_id: int, text: str, username: str | None, full_name: str | None) -> dict:
+    """Insert a new suggestion with an auto-incrementing id. Returns the record."""
+    suggestions = load_suggestions()
+    existing_ids = [int(k) for k in suggestions.keys() if k.isdigit()]
+    new_id = str((max(existing_ids) + 1) if existing_ids else 1)
+    rec = {
+        "id": new_id,
+        "chatId": chat_id,
+        "username": username or "",
+        "fullName": full_name or "",
+        "text": text,
+        "status": "pending",
+        "createdAt": datetime.now(timezone.utc).isoformat(),
+        "reviewedAt": None,
+    }
+    suggestions[new_id] = rec
+    save_suggestions(suggestions)
+    return rec
+
+
+def get_suggestion(suggestion_id: str) -> dict | None:
+    return load_suggestions().get(str(suggestion_id))
+
+
+def mark_suggestion_reviewed(suggestion_id: str) -> bool:
+    suggestions = load_suggestions()
+    rec = suggestions.get(str(suggestion_id))
+    if not rec:
+        return False
+    rec["status"] = "reviewed"
+    rec["reviewedAt"] = datetime.now(timezone.utc).isoformat()
+    save_suggestions(suggestions)
+    return True
+
+
+def delete_suggestion(suggestion_id: str) -> bool:
+    suggestions = load_suggestions()
+    if str(suggestion_id) in suggestions:
+        suggestions.pop(str(suggestion_id))
+        save_suggestions(suggestions)
+        return True
+    return False
+
+
+def pending_suggestions() -> list[dict]:
+    suggestions = load_suggestions()
+    out = [r for r in suggestions.values() if r.get("status") == "pending"]
+    out.sort(key=lambda r: int(r.get("id", 0)))
+    return out
