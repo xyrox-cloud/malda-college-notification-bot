@@ -31,6 +31,24 @@ import routine
 import storage
 from sheets import refresh_all
 
+def normalize_date_str(d_str: str) -> str:
+    import re
+    parts = re.split(r'\s+', d_str.strip())
+    if len(parts) != 3:
+        return d_str
+    
+    day, month, year = parts
+    month_map = {
+        'january': 'Jan', 'jan': 'Jan', 'february': 'Feb', 'feb': 'Feb',
+        'march': 'Mar', 'mar': 'Mar', 'april': 'Apr', 'apr': 'Apr', 'may': 'May',
+        'june': 'Jun', 'jun': 'Jun', 'july': 'Jul', 'jul': 'Jul',
+        'august': 'Aug', 'aug': 'Aug', 'september': 'Sep', 'sept': 'Sep', 'sep': 'Sep',
+        'october': 'Oct', 'oct': 'Oct', 'november': 'Nov', 'nov': 'Nov',
+        'december': 'Dec', 'dec': 'Dec'
+    }
+    norm_month = month_map.get(month.lower(), month.capitalize()[:3])
+    return f"{day} {norm_month} {year}"
+
 router = Router(name="admin")
 
 
@@ -88,45 +106,49 @@ class SetException(StatesGroup):
 @router.message(Command("setexception"))
 async def cmd_setexception(message: Message, state: FSMContext, command: CommandObject) -> None:
     arg = (command.args or "").strip()
-    print(f"DEBUG: cmd_setexception called with arg='{arg}'")
     
     if arg:
         import re
-        date_pattern = r'\d{1,2}\s+[a-zA-Z]{3}\s+\d{4}'
-        range_match = re.match(fr'^({date_pattern})\s+to\s+({date_pattern})(?:\s+(.+))?$', arg, re.IGNORECASE)
-        single_match = re.match(fr'^({date_pattern})(?:\s+(.+))?$', arg, re.IGNORECASE)
+        date_pattern = r'\d{1,2}\s+[a-zA-Z]{3,10}\s+\d{4}'
+        range_match = re.match(fr'^({date_pattern})\s+to\s+({date_pattern})(?:\s+(.*))?$', arg, re.IGNORECASE)
+        single_match = re.match(fr'^({date_pattern})(?:\s+(.*))?$', arg, re.IGNORECASE)
         
         start_str_raw, end_str_raw, reason = None, None, None
         
         if range_match:
-            start_str_raw = range_match.group(1)
-            end_str_raw = range_match.group(2)
+            start_str_raw = range_match.group(1).strip()
+            end_str_raw = range_match.group(2).strip()
             reason = range_match.group(3)
         elif single_match:
-            start_str_raw = single_match.group(1)
+            start_str_raw = single_match.group(1).strip()
             end_str_raw = start_str_raw
             reason = single_match.group(2)
             
         if start_str_raw and end_str_raw:
+            reason = reason.strip() if reason else ""
             if not reason:
                 await message.answer("\u26A0\uFE0F Reason is required when using the inline command.")
                 return
             
-            reason = reason.strip()
-            print(f"DEBUG: Parsed inline command: start='{start_str_raw}', end='{end_str_raw}', reason='{reason}'")
-            
             try:
-                start_d = datetime.strptime(start_str_raw, "%d %b %Y")
-                end_d = datetime.strptime(end_str_raw, "%d %b %Y")
-                if end_d < start_d:
-                    await message.answer("\u26A0\uFE0F End date cannot be before start date.")
-                    return
-                date_key = f"{start_d.strftime('%d %b %Y')} to {end_d.strftime('%d %b %Y')}" if start_d != end_d else start_d.strftime('%d %b %Y')
-                start_str = start_d.strftime('%d %b %Y')
-                end_str = end_d.strftime('%d %b %Y')
+                start_d = datetime.strptime(normalize_date_str(start_str_raw), "%d %b %Y")
             except ValueError:
-                await message.answer("\u26A0\uFE0F Could not parse dates.")
+                await message.answer(f"\u26A0\uFE0F Could not parse date: '{start_str_raw}' — please check the month name.")
                 return
+                
+            try:
+                end_d = datetime.strptime(normalize_date_str(end_str_raw), "%d %b %Y")
+            except ValueError:
+                await message.answer(f"\u26A0\uFE0F Could not parse date: '{end_str_raw}' — please check the month name.")
+                return
+                
+            if end_d < start_d:
+                await message.answer("\u26A0\uFE0F End date cannot be before start date.")
+                return
+                
+            date_key = f"{start_d.strftime('%d %b %Y')} to {end_d.strftime('%d %b %Y')}" if start_d != end_d else start_d.strftime('%d %b %Y')
+            start_str = start_d.strftime('%d %b %Y')
+            end_str = end_d.strftime('%d %b %Y')
                 
             # Process setting exception directly
             current_d = start_d
@@ -213,9 +235,15 @@ async def on_exc_date_typed(message: Message, state: FSMContext) -> None:
         return
 
     try:
-        start_d = datetime.strptime(parts[0].strip(), "%d %b %Y")
+        start_str_raw = parts[0].strip()
+        start_d = datetime.strptime(normalize_date_str(start_str_raw), "%d %b %Y")
         if len(parts) == 2:
-            end_d = datetime.strptime(parts[1].strip(), "%d %b %Y")
+            end_str_raw = parts[1].strip()
+            try:
+                end_d = datetime.strptime(normalize_date_str(end_str_raw), "%d %b %Y")
+            except ValueError:
+                await message.answer(f"\u26A0\uFE0F Could not parse date: '{end_str_raw}' — please check the month name.")
+                return
             if end_d < start_d:
                 await message.answer("\u26A0\uFE0F End date cannot be before start date. Try again:")
                 return
@@ -227,10 +255,7 @@ async def on_exc_date_typed(message: Message, state: FSMContext) -> None:
             start_str = date_key
             end_str = date_key
     except ValueError:
-        await message.answer(
-            "\u26A0\uFE0F Could not parse that. Use <b>DD Mon YYYY</b> (e.g. <code>11 Aug 2026</code>) "
-            "or a range like <code>10 Aug 2026 to 15 Aug 2026</code>:"
-        )
+        await message.answer(f"\u26A0\uFE0F Could not parse date: '{start_str_raw}' — please check the month name.")
         return
         
     await state.update_data(exc_date=date_key, start_str=start_str, end_str=end_str)
@@ -305,16 +330,22 @@ async def cmd_clearexception(message: Message, command: CommandObject) -> None:
         return
         
     try:
-        start_d = datetime.strptime(parts[0].strip(), "%d %b %Y")
+        start_str_raw = parts[0].strip()
+        start_d = datetime.strptime(normalize_date_str(start_str_raw), "%d %b %Y")
         if len(parts) == 2:
-            end_d = datetime.strptime(parts[1].strip(), "%d %b %Y")
+            end_str_raw = parts[1].strip()
+            try:
+                end_d = datetime.strptime(normalize_date_str(end_str_raw), "%d %b %Y")
+            except ValueError:
+                await message.answer(f"\u26A0\uFE0F Could not parse date: '{end_str_raw}' — please check the month name.")
+                return
             if end_d < start_d:
                 await message.answer("\u26A0\uFE0F End date cannot be before start date.")
                 return
         else:
             end_d = start_d
     except ValueError:
-        await message.answer("\u26A0\uFE0F Could not parse date. Use <b>DD Mon YYYY</b> (e.g. <code>11 Aug 2026</code>) or a range.")
+        await message.answer(f"\u26A0\uFE0F Could not parse date: '{start_str_raw}' — please check the month name.")
         return
         
     removed_count = 0
