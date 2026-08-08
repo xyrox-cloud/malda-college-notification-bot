@@ -1,0 +1,15 @@
+# Malda College Bot — Python dependencies
+#
+# On Linux/macOS/Oracle VPS/EC2:  pip install -r requirements.txt
+# On Termux (Android):            bash setup_termux.sh   (handles Rust/pydantic-core)
+#
+# Notes:
+#  - aiogram v3 requires pydantic v2, which requires pydantic-core (Rust-compiled).
+#    On Termux this needs the tur-repo or a Rust toolchain — see setup_termux.sh.
+#  - Versions are left as >= so pip picks the latest compatible wheel; on Termux
+#    the setup script handles the source-build path.
+
+aiogram>=3.13.0
+aiohttp>=3.9.0
+beautifulsoup4>=4.12.0
+filelock>=3.13.0

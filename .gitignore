@@ -1,0 +1,21 @@
+# Secrets & runtime data — never commit
+.env
+data/
+*.json
+!*.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.venv/
+venv/
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+*.swp
+malda-college-bot-mj-mn-mdc.zip
+data/

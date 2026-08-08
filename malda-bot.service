@@ -1,0 +1,31 @@
+[Unit]
+Description=Malda College Bot (aiogram) — notice monitor + routine
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# Default: Ubuntu user 'ubuntu' on AWS EC2 / Oracle VPS.
+# On Oracle's default Ubuntu image the user is also 'ubuntu' if you used the
+# canonical Ubuntu cloud image. If you used Oracle's 'opc' user (Oracle Linux),
+# change User= below to 'opc' and adjust WorkingDirectory ownership.
+User=ubuntu
+Group=ubuntu
+
+WorkingDirectory=/opt/malda-bot
+EnvironmentFile=/opt/malda-bot/.env
+ExecStart=/opt/malda-bot/venv/bin/python /opt/malda-bot/malda_bot.py
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+# Hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/opt/malda-bot
+
+[Install]
+WantedBy=multi-user.target
