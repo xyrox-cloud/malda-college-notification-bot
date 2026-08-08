@@ -356,3 +356,6 @@ Press `Ctrl+C` to stop.
 | `.env.example` | Template — copy to `.env` and fill in |
 | `malda-bot.service` | systemd unit (Ubuntu user; adjustable for Oracle Linux `opc`) |
 # malda-college-notification-bot
+
+## Google Apps Script Links
+Agar aapko routine/calendar ke liye Google Apps Script ka deployment link chahiye, to Telegram par mujhe DM karo: @xynqr

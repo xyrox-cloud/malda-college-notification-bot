@@ -12,9 +12,9 @@ Type=simple
 User=ubuntu
 Group=ubuntu
 
-WorkingDirectory=/opt/malda-bot
-EnvironmentFile=/opt/malda-bot/.env
-ExecStart=/opt/malda-bot/venv/bin/python /opt/malda-bot/malda_bot.py
+WorkingDirectory=/home/ubuntu/malda-college-notification-bot
+EnvironmentFile=/home/ubuntu/malda-college-notification-bot/.env
+ExecStart=/home/ubuntu/malda-college-notification-bot/venv/bin/python /home/ubuntu/malda-college-notification-bot/malda_bot.py
 Restart=always
 RestartSec=10
 StandardOutput=journal
@@ -22,10 +22,10 @@ StandardError=journal
 
 # Hardening
 NoNewPrivileges=true
-ProtectSystem=strict
-ProtectHome=true
+# ProtectSystem=strict
+# ProtectHome=true
 PrivateTmp=true
-ReadWritePaths=/opt/malda-bot
+ReadWritePaths=/home/ubuntu/malda-college-notification-bot
 
 [Install]
 WantedBy=multi-user.target
