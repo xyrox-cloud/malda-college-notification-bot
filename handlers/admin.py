@@ -313,14 +313,83 @@ async def on_exc_reason(message: Message, state: FSMContext) -> None:
 
 
 # ---------------------------------------------------------------------------
-# /clearexception <date>
+# Helper for Exceptions
 # ---------------------------------------------------------------------------
 
+def _get_grouped_exceptions():
+    storage.prune_past_exceptions()
+    excs = storage.load_exceptions()
+    if not excs:
+        return []
+    def _sort_key(item):
+        try:
+            return datetime.strptime(item[0], "%d %b %Y")
+        except ValueError:
+            return datetime.max
+    sorted_keys = sorted(excs.keys(), key=_sort_key)
+    grouped = []
+    for date_key in sorted_keys:
+        try:
+            d = datetime.strptime(date_key, "%d %b %Y")
+        except ValueError:
+            continue
+        reason = excs[date_key].get('reason', '—')
+        if not grouped:
+            grouped.append({"start": d, "end": d, "reason": reason})
+        else:
+            last = grouped[-1]
+            if (d - last["end"]).days == 1 and last["reason"] == reason:
+                last["end"] = d
+            else:
+                grouped.append({"start": d, "end": d, "reason": reason})
+    return grouped
+
+
+# ---------------------------------------------------------------------------
+# /clearexception <date> (or interactive)
+# ---------------------------------------------------------------------------
+
+class ClearException(StatesGroup):
+    waiting_for_selection = State()
+    waiting_for_confirmation = State()
+
+
 @router.message(Command("clearexception"))
-async def cmd_clearexception(message: Message, command: CommandObject) -> None:
+async def cmd_clearexception(message: Message, command: CommandObject, state: FSMContext) -> None:
     arg = (command.args or "").strip()
     if not arg:
-        await message.answer("Usage: <code>/clearexception DD Mon YYYY</code> or <code>/clearexception DD Mon YYYY to DD Mon YYYY</code>")
+        grouped = _get_grouped_exceptions()
+        if not grouped:
+            await message.answer("\u2139\uFE0F No upcoming exceptions to clear.")
+            return
+            
+        buttons = []
+        emoji_nums = ["1\ufe0f\u20e3", "2\ufe0f\u20e3", "3\ufe0f\u20e3", "4\ufe0f\u20e3", "5\ufe0f\u20e3", "6\ufe0f\u20e3", "7\ufe0f\u20e3", "8\ufe0f\u20e3", "9\ufe0f\u20e3", "\ud83d\udd1f"]
+        
+        lines = ["\U0001F5D1 <b>Select Exception to Clear:</b>\n"]
+        grouped_data = []
+        
+        for i, g in enumerate(grouped):
+            start_str = g["start"].strftime("%d %b %Y")
+            end_str = g["end"].strftime("%d %b %Y")
+            lbl = f"{start_str}" if start_str == end_str else f"{start_str} to {end_str}"
+            prefix = emoji_nums[i] if i < 10 else f"{i+1}."
+            
+            lines.append(f"{prefix} <b>{lbl}</b> — {g['reason']}")
+            buttons.append([InlineKeyboardButton(text=f"{prefix} {lbl}", callback_data=f"clear_select:{i}")])
+            
+            grouped_data.append({
+                "start": g["start"].strftime("%Y-%m-%d"),
+                "end": g["end"].strftime("%Y-%m-%d"),
+                "lbl": lbl,
+                "reason": g["reason"]
+            })
+            
+        buttons.append([InlineKeyboardButton(text="\u274C Cancel", callback_data="clear_select:cancel")])
+        
+        await state.update_data(grouped_excs=grouped_data)
+        await state.set_state(ClearException.waiting_for_selection)
+        await message.answer("\n".join(lines), reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons))
         return
         
     import re
@@ -368,44 +437,83 @@ async def cmd_clearexception(message: Message, command: CommandObject) -> None:
             await message.answer(f"\u2139\uFE0F No exception was set for <b>{start_d.strftime('%d %b %Y')}</b>.")
 
 
+@router.callback_query(ClearException.waiting_for_selection, F.data.startswith("clear_select:"))
+async def on_clear_select(callback: CallbackQuery, state: FSMContext) -> None:
+    choice = callback.data.split(":", 1)[1]
+    if choice == "cancel":
+        await state.clear()
+        await callback.message.edit_text("\u274C Clear operation cancelled.")
+        return
+        
+    idx = int(choice)
+    data = await state.get_data()
+    grouped = data.get("grouped_excs", [])
+    if idx < 0 or idx >= len(grouped):
+        await callback.answer("Invalid selection.")
+        return
+        
+    selected = grouped[idx]
+    await state.update_data(selected_exc=selected)
+    
+    buttons = [
+        [
+            InlineKeyboardButton(text="\u2705 Yes, clear it", callback_data="clear_confirm:yes"),
+            InlineKeyboardButton(text="\u274C No, cancel", callback_data="clear_confirm:no"),
+        ]
+    ]
+    await state.set_state(ClearException.waiting_for_confirmation)
+    await callback.message.edit_text(
+        f"\u26A0\uFE0F <b>Are you sure you want to clear this exception?</b>\n\n"
+        f"<b>Date(s):</b> {selected['lbl']}\n"
+        f"<b>Reason:</b> {selected['reason']}",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
+    )
+
+
+@router.callback_query(ClearException.waiting_for_confirmation, F.data.startswith("clear_confirm:"))
+async def on_clear_confirm(callback: CallbackQuery, state: FSMContext) -> None:
+    choice = callback.data.split(":", 1)[1]
+    if choice == "no":
+        await state.clear()
+        await callback.message.edit_text("\u274C Clear operation cancelled.")
+        return
+        
+    data = await state.get_data()
+    selected = data.get("selected_exc")
+    await state.clear()
+    
+    if not selected:
+        await callback.message.edit_text("\u26A0\uFE0F Session expired.")
+        return
+        
+    start_d = datetime.strptime(selected["start"], "%Y-%m-%d")
+    end_d = datetime.strptime(selected["end"], "%Y-%m-%d")
+    
+    removed_count = 0
+    current_d = start_d
+    while current_d <= end_d:
+        if storage.clear_exception(current_d.strftime("%d %b %Y")):
+            removed_count += 1
+        current_d += timedelta(days=1)
+        
+    if removed_count > 0:
+        await callback.message.edit_text(f"\u2705 Successfully cleared exception for <b>{selected['lbl']}</b>. Normal calendar/routine logic resumes.")
+    else:
+        await callback.message.edit_text(f"\u2139\uFE0F Could not find or clear exception for <b>{selected['lbl']}</b>.")
+
+
 # ---------------------------------------------------------------------------
 # /listexceptions
 # ---------------------------------------------------------------------------
 
 @router.message(Command("listexceptions"))
 async def cmd_listexceptions(message: Message) -> None:
-    storage.prune_past_exceptions()
-    excs = storage.load_exceptions()
-    if not excs:
+    grouped = _get_grouped_exceptions()
+    if not grouped:
         await message.answer("\u2139\uFE0F No upcoming exceptions set.")
         return
-
-    def _sort_key(item):
-        try:
-            return datetime.strptime(item[0], "%d %b %Y")
-        except ValueError:
-            return datetime.max
-
-    sorted_keys = sorted(excs.keys(), key=_sort_key)
-    lines = ["\U0001F4CB <b>Upcoming Exceptions</b>\n"]
-    
-    grouped = []
-    for date_key in sorted_keys:
-        try:
-            d = datetime.strptime(date_key, "%d %b %Y")
-        except ValueError:
-            continue
-        reason = excs[date_key].get('reason', '—')
         
-        if not grouped:
-            grouped.append({"start": d, "end": d, "reason": reason})
-        else:
-            last = grouped[-1]
-            if (d - last["end"]).days == 1 and last["reason"] == reason:
-                last["end"] = d
-            else:
-                grouped.append({"start": d, "end": d, "reason": reason})
-
+    lines = ["\U0001F4CB <b>Upcoming Exceptions</b>\n"]
     for g in grouped:
         start_str = g["start"].strftime("%d %b %Y")
         end_str = g["end"].strftime("%d %b %Y")
