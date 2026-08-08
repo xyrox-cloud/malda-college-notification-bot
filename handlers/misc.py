@@ -24,6 +24,7 @@ async def cmd_help(message: Message) -> None:
     if is_admin:
         admin_lines = (
             "\n\n<b>Admin commands:</b>\n"
+            "/status - Bot uptime + subscriber count\n"
             "/refreshdata - Re-fetch all sheet data now\n"
             "/setexception - Set an ad-hoc class-off day + broadcast\n"
             "/clearexception <i>DD Mon YYYY</i> - Remove an exception\n"
@@ -44,9 +45,7 @@ async def cmd_help(message: Message) -> None:
         "/notification - Show your last 5 received notifications\n"
         "/suggest <i>text</i> - Suggest a change or setting to the admin\n"
         "/ping - Check bot latency\n"
-        "/help - Show this message\n\n"
-        "<b>Admin Only:</b>\n"
-        "/status - Bot uptime + subscriber count"
+        "/help - Show this message"
         + admin_lines
     )
 
