@@ -86,7 +86,82 @@ class SetException(StatesGroup):
 
 
 @router.message(Command("setexception"))
-async def cmd_setexception(message: Message, state: FSMContext) -> None:
+async def cmd_setexception(message: Message, state: FSMContext, command: CommandObject) -> None:
+    arg = (command.args or "").strip()
+    print(f"DEBUG: cmd_setexception called with arg='{arg}'")
+    
+    if arg:
+        import re
+        date_pattern = r'\d{1,2}\s+[a-zA-Z]{3}\s+\d{4}'
+        range_match = re.match(fr'^({date_pattern})\s+to\s+({date_pattern})(?:\s+(.+))?$', arg, re.IGNORECASE)
+        single_match = re.match(fr'^({date_pattern})(?:\s+(.+))?$', arg, re.IGNORECASE)
+        
+        start_str_raw, end_str_raw, reason = None, None, None
+        
+        if range_match:
+            start_str_raw = range_match.group(1)
+            end_str_raw = range_match.group(2)
+            reason = range_match.group(3)
+        elif single_match:
+            start_str_raw = single_match.group(1)
+            end_str_raw = start_str_raw
+            reason = single_match.group(2)
+            
+        if start_str_raw and end_str_raw:
+            if not reason:
+                await message.answer("\u26A0\uFE0F Reason is required when using the inline command.")
+                return
+            
+            reason = reason.strip()
+            print(f"DEBUG: Parsed inline command: start='{start_str_raw}', end='{end_str_raw}', reason='{reason}'")
+            
+            try:
+                start_d = datetime.strptime(start_str_raw, "%d %b %Y")
+                end_d = datetime.strptime(end_str_raw, "%d %b %Y")
+                if end_d < start_d:
+                    await message.answer("\u26A0\uFE0F End date cannot be before start date.")
+                    return
+                date_key = f"{start_d.strftime('%d %b %Y')} to {end_d.strftime('%d %b %Y')}" if start_d != end_d else start_d.strftime('%d %b %Y')
+                start_str = start_d.strftime('%d %b %Y')
+                end_str = end_d.strftime('%d %b %Y')
+            except ValueError:
+                await message.answer("\u26A0\uFE0F Could not parse dates.")
+                return
+                
+            # Process setting exception directly
+            current_d = start_d
+            while current_d <= end_d:
+                storage.set_exception(current_d.strftime("%d %b %Y"), reason, set_by=message.chat.id)
+                current_d += timedelta(days=1)
+                
+            # Broadcast
+            if start_str != end_str:
+                msg_date = f"from {start_str} to {end_str}"
+            else:
+                msg_date = f"on {start_str}"
+            
+            broadcast_text = (
+                "\U0001F514 <b>Update from Malda College Bot</b>\n\n"
+                f"\U0001F534 <b>Classes are OFF {msg_date}</b>\n"
+                f"Reason: {reason}"
+            )
+            result = await broadcast.broadcast_text(message.bot, broadcast_text)
+            
+            await message.answer(
+                f"\u2705 Exception saved for <b>{date_key}</b>.\n"
+                f"Reason: {reason}\n"
+                f"Broadcast sent to {result['sent']}/{result['total']} subscribers."
+            )
+            return
+            
+        else:
+            await message.answer(
+                "\u26A0\uFE0F Could not parse inline command.\n"
+                "Format: <code>/setexception DD Mon YYYY [to DD Mon YYYY] Reason</code>\n"
+                "Or simply send <code>/setexception</code> to use the interactive menu."
+            )
+            return
+
     await state.clear()
     today = routine._now()
     tomorrow = today + timedelta(days=1)
