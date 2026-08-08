@@ -8,10 +8,11 @@ import time
 
 from aiogram import F, Router
 from aiogram.filters import Command
-from aiogram.types import Message
+from aiogram.types import BufferedInputFile, Message
 
 import config
 import scraper
+from text_style import bold_italic
 
 router = Router(name="misc")
 
@@ -61,16 +62,38 @@ async def cmd_latest(message: Message) -> None:
     progress = await message.answer("\U0001F50D Fetching latest notice...")
     try:
         notices = await scraper.scrape_notices()
-        if notices:
-            top = notices[0]
-            await progress.edit_text(
-                "\U0001F4C4 <b>Latest Notice</b>\n\n"
-                f"{top['title']}\n\n"
-                f'\U0001F517 <a href="{top["link"]}">View Details</a>',
-                disable_web_page_preview=False,
-            )
-        else:
+        if not notices:
             await progress.edit_text("No notices found on the page right now.")
+            return
+
+        top = notices[0]
+        header = bold_italic("Latest Notice")
+        caption = (
+            f"\U0001F4C4 {header}\n\n"
+            f"{top['title']}\n\n"
+            f'\U0001F587\uFE0F <a href="{top["link"]}">Original link</a>'
+        )
+
+        file_info = await scraper.download_notice_file(top["link"])
+        if file_info is not None:
+            content, filename, mime = file_info
+            try:
+                if mime.startswith("image/"):
+                    await message.answer_photo(
+                        BufferedInputFile(content, filename=filename), caption=caption,
+                    )
+                else:
+                    await message.answer_document(
+                        BufferedInputFile(content, filename=filename), caption=caption,
+                    )
+                await progress.delete()
+                return
+            except Exception as exc:  # noqa: BLE001
+                config.logger.error("Failed sending downloaded file for /latest: %s", exc)
+
+        # Couldn't download the notice content (or sending it failed) —
+        # fall back to the plain title + link message.
+        await progress.edit_text(caption, disable_web_page_preview=False)
     except Exception as exc:  # noqa: BLE001
         await progress.edit_text(f"\u26A0\uFE0F Failed to fetch notices: {exc}")
 
