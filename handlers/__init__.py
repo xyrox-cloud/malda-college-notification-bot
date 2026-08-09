@@ -8,6 +8,7 @@ from .status import router as status_router
 from .admin import router as admin_router
 from .suggest import router as suggest_router
 from .misc import router as misc_router
+from .donate import router as donate_router
 
 __all__ = [
     "start_router",
@@ -18,4 +19,5 @@ __all__ = [
     "admin_router",
     "suggest_router",
     "misc_router",
+    "donate_router",
 ]

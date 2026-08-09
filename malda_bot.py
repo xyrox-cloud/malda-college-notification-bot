@@ -25,6 +25,7 @@ from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.fsm.storage.memory import MemoryStorage
+from aiogram.types import BotCommand
 
 import broadcast
 import config
@@ -33,6 +34,7 @@ import sheets
 import storage
 from handlers import (
     admin_router,
+    donate_router,
     misc_router,
     notify_router,
     profile_router,
@@ -163,7 +165,26 @@ async def on_startup(bot: Bot) -> None:
     if pruned:
         logger.info("Pruned %d past exception(s) on startup.", pruned)
 
-    # 4) Notify admin that the bot is up
+    # 4) Register the bot command menu (shows up in Telegram's / autocomplete)
+    try:
+        await bot.set_my_commands([
+            BotCommand(command="start",       description="Subscribe + register"),
+            BotCommand(command="r",            description="Today's routine (or /r now, /r next, /r mon)"),
+            BotCommand(command="myprofile",    description="View your registration + notification status"),
+            BotCommand(command="mysubjects",   description="View / change your MJ/MN/MDC subjects"),
+            BotCommand(command="reregister",   description="Change semester + subjects"),
+            BotCommand(command="notify",       description="Toggle notifications ON/OFF"),
+            BotCommand(command="latest",       description="Show the most recent college notice"),
+            BotCommand(command="suggest",      description="Send a suggestion to the admin"),
+            BotCommand(command="donate",       description="Support this project (UPI / Crypto)"),
+            BotCommand(command="ping",         description="Check bot latency"),
+            BotCommand(command="help",         description="Show all available commands"),
+        ])
+        logger.info("Bot command menu registered.")
+    except Exception as exc:  # noqa: BLE001
+        logger.error("Failed to set bot commands: %s", exc)
+
+    # 5) Notify admin that the bot is up
     if config.ADMIN_CHAT_IDS:
         try:
             await broadcast.send_admin(
@@ -214,7 +235,8 @@ def build_dispatcher() -> Dispatcher:
     dp.include_router(routine_router)
     dp.include_router(status_router)
     dp.include_router(suggest_router)
-    dp.include_router(misc_router)
+    dp.include_router(donate_router)
+    dp.include_router(misc_router)  # misc last — contains unknown-command fallback
     return dp
 
 

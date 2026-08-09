@@ -48,6 +48,7 @@ async def cmd_help(message: Message) -> None:
         "/latest - Show the most recent notice from the college website\n"
         "/notification - Show your last 5 received notifications\n"
         "/suggest <i>text</i> - Suggest a change or setting to the admin\n"
+        "/donate - Support the bot owner's education (UPI / Crypto)\n"
         "/ping - Check bot latency\n"
         "/help - Show this message"
         + admin_lines

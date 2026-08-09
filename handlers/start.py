@@ -330,6 +330,7 @@ async def _finalize_ug(message: Message, state: FSMContext) -> None:
     lines.append("  /myprofile — view your details")
     lines.append("  /notify — toggle notifications")
     lines.append("  /reregister — change semester + subjects")
+    lines.append("  /donate — support this project")
     await message.edit_text("\n".join(lines))
 
 
@@ -387,7 +388,8 @@ async def on_pg_subject_picked(callback: CallbackQuery, state: FSMContext) -> No
         f"  /mysubjects — view/change your subject\n"
         f"  /myprofile — view your details\n"
         f"  /notify — toggle notifications\n"
-        f"  /reregister — change semester/subject"
+        f"  /reregister — change semester/subject\n"
+        f"  /donate — support this project"
     )
     await callback.answer()
 
