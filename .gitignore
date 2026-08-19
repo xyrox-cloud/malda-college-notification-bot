@@ -1,8 +1,13 @@
 # Secrets & runtime data — never commit
 .env
+.env.*
+!.env.example
 data/
 *.json
-!*.env.example
+
+# Backups & Archives (local only, do not push secrets)
+*.zip
+bots-backup/
 
 # Python
 __pycache__/
@@ -17,5 +22,4 @@ venv/
 .idea/
 .vscode/
 *.swp
-malda-college-bot-mj-mn-mdc.zip
-data/
+

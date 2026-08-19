@@ -48,7 +48,7 @@ if pkg install -y tur-repo 2>/dev/null; then
     if pkg install -y pydantic-core 2>/dev/null; then
         echo "  tur-repo + pydantic-core installed. Installing remaining deps..."
         pip install --no-build-isolation pydantic 2>&1 | tail -3
-        pip install aiogram aiohttp beautifulsoup4 filelock 2>&1 | tail -3
+        pip install aiogram aiohttp beautifulsoup4 filelock python-dotenv 2>&1 | tail -3
         PATH_CHOSEN="A"
     else
         echo "  pydantic-core not in tur-repo yet. Falling through to Path B..."
@@ -85,7 +85,7 @@ fi
 # --- 4. Verify install -----------------------------------------------------
 echo ""
 echo "[4/5] Verifying install..."
-if python3 -c "import aiogram, aiohttp, bs4, filelock; print('aiogram', aiogram.__version__)" 2>&1; then
+if python3 -c "import aiogram, aiohttp, bs4, filelock, dotenv; print('aiogram', aiogram.__version__)" 2>&1; then
     echo "  All imports OK."
 else
     echo "ERROR: import check failed. Try running pip install -r requirements.txt manually."
