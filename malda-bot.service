@@ -5,16 +5,12 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-# Default: Ubuntu user 'ubuntu' on AWS EC2 / Oracle VPS.
-# On Oracle's default Ubuntu image the user is also 'ubuntu' if you used the
-# canonical Ubuntu cloud image. If you used Oracle's 'opc' user (Oracle Linux),
-# change User= below to 'opc' and adjust WorkingDirectory ownership.
-User=ubuntu
-Group=ubuntu
+User=azureuser
+Group=azureuser
 
-WorkingDirectory=/home/ubuntu/malda-college-notification-bot
-EnvironmentFile=/home/ubuntu/malda-college-notification-bot/.env
-ExecStart=/home/ubuntu/malda-college-notification-bot/venv/bin/python /home/ubuntu/malda-college-notification-bot/malda_bot.py
+WorkingDirectory=/home/azureuser/malda-college-notification-bot
+EnvironmentFile=/home/azureuser/malda-college-notification-bot/.env
+ExecStart=/home/azureuser/malda-college-notification-bot/venv/bin/python /home/azureuser/malda-college-notification-bot/malda_bot.py
 Restart=always
 RestartSec=10
 StandardOutput=journal
@@ -22,10 +18,8 @@ StandardError=journal
 
 # Hardening
 NoNewPrivileges=true
-# ProtectSystem=strict
-# ProtectHome=true
 PrivateTmp=true
-ReadWritePaths=/home/ubuntu/malda-college-notification-bot
+ReadWritePaths=/home/azureuser/malda-college-notification-bot
 
 [Install]
 WantedBy=multi-user.target
